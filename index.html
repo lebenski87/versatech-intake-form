@@ -8,6 +8,117 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Firebase SDKs for future backend integration -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getStorage, ref, uploadBytes } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
+        // import { getAnalytics } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-analytics.js"; // Uncomment if you plan to use Analytics
+
+
+        // Your web app's Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyDFfr1I_ql3o_I1D_nhMoVy5pJp5fvgHRM",
+            authDomain: "versatech-student-immigration.firebaseapp.com",
+            projectId: "versatech-student-immigration",
+            storageBucket: "versatech-student-immigration.firebasestorage.app",
+            messagingSenderId: "137591151049",
+            appId: "1:137591151049:web:5e3a311eee6a727060f018",
+            measurementId: "G-B6S96P22VQ"
+        };
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        // const analytics = getAnalytics(app); // Uncomment if you plan to use Analytics
+
+        let db;
+        let auth;
+        let storage;
+        let userId = 'anonymous'; // Default for unauthenticated users
+
+        async function initializeFirebaseServices() {
+            try {
+                db = getFirestore(app);
+                auth = getAuth(app);
+                storage = getStorage(app);
+
+                // REMINDER FOR USER: Ensure Firebase Authentication is enabled in your Firebase Project Console!
+                // Go to your Firebase project -> Build -> Authentication -> Get started -> Enable Anonymous Sign-in
+                const initialAuthToken = null; // Canvas environment's __initial_auth_token is not available here, so default to null
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+                userId = auth.currentUser?.uid || crypto.randomUUID();
+                console.log('Firebase services initialized successfully. User ID:', userId);
+            } catch (error) {
+                console.error("Error initializing Firebase services or signing in:", error);
+                // Display a specific message for authentication configuration error
+                if (error.code === 'auth/configuration-not-found') {
+                    // Access showCustomModal from the window object as it's defined in the main script
+                    if (window.showCustomModal) {
+                        window.showCustomModal("Firebase Authentication is not enabled for your project, or there's a configuration issue. Please go to your Firebase Console, select your project, then navigate to 'Build > Authentication' and ensure a sign-in method (like Anonymous) is enabled. Also verify your API key.");
+                    } else {
+                        console.error("Custom modal function (showCustomModal) not found.");
+                    }
+                } else {
+                    // For other errors, use the generic error message defined in translations
+                    if (window.showCustomModal && window.translations && window.translations[window.currentLanguage]) {
+                        window.showCustomModal(window.translations[window.currentLanguage].genericError);
+                    } else {
+                        console.error("Generic error or translation resources not available.");
+                    }
+                }
+            }
+        }
+
+        initializeFirebaseServices();
+
+        // Expose Firebase objects for use in inline script
+        window.firebaseApp = app;
+        window.firebaseDb = db;
+        window.firebaseAuth = auth;
+        window.firebaseStorage = storage;
+        window.currentUserId = userId; // Make sure userId is updated and accessible after auth
+
+        window.addFirestoreDocument = async (collectionName, data) => {
+            if (!db) {
+                console.error("Firestore not initialized. Cannot add document.");
+                return null;
+            }
+            try {
+                // Use your projectId as the appId for collection path as per previous instructions
+                // The structure for private user data: /artifacts/{projectId}/users/{userId}/{your_collection_name}
+                // The structure for public shared data: /artifacts/{projectId}/public/data/{your_collection_name}
+                const currentProjectId = firebaseConfig.projectId; // Get projectId from your config
+                const collectionPath = `/artifacts/${currentProjectId}/users/${userId}/${collectionName}`;
+                const docRef = await addDoc(collection(db, collectionPath), data);
+                console.log("Document written with ID: ", docRef.id);
+                return docRef.id;
+            } catch (e) {
+                console.error("Error adding document: ", e);
+                return null;
+            }
+        };
+
+        window.uploadFileToFirebaseStorage = async (file, path) => {
+            if (!storage) {
+                console.error("Firebase Storage not initialized. Cannot upload file.");
+                return null;
+            }
+            try {
+                const storageRef = ref(storage, path);
+                const snapshot = await uploadBytes(storageRef, file);
+                console.log('Uploaded a blob or file!', snapshot);
+                return snapshot.ref.fullPath; // Returns the path within storage
+            } catch (e) {
+                console.error("Error uploading file: ", e);
+                return null;
+            }
+        };
+    </script>
     <!--
     Chosen Palette: Warm Neutrals - A calming and professional palette using off-white, slate gray, and a deep, trustworthy blue accent to create a sense of calm, stability, and focus.
     Application Structure Plan: The SPA is designed as a guided journey for the prospective student. It starts with a broad, welcoming hero section to build trust, followed by a simplified, interactive "Our Process" flow to demystify the immigration steps. It then presents "Required Documents" in a digestible, categorized format and reinforces trust with a "Security First" section. Contact information is clearly laid out before leading to the primary call-to-action: a multi-step, user-friendly "Intake Form". This top-down, funnel-like structure is chosen to educate and reassure the user before asking for their sensitive information, maximizing completion rates and user confidence.
@@ -60,9 +171,45 @@
             text-overflow: ellipsis;
             white-space: nowrap;
         }
+        /* Custom Modal Styles */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .modal-content {
+            background-color: white;
+            padding: 2rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1);
+            max-width: 400px;
+            width: 90%;
+            text-align: center;
+        }
+        .modal-content button {
+            margin-top: 1rem;
+            background-color: #2563EB;
+            color: white;
+            font-semibold px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors;
+        }
     </style>
 </head>
 <body class="antialiased">
+
+    <!-- Custom Modal Structure -->
+    <div id="customModal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <p id="modalMessage" class="text-slate-800 text-lg mb-4"></p>
+            <button id="modalCloseBtn" class="bg-blue-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">OK</button>
+        </div>
+    </div>
 
     <!-- Header & Navigation -->
     <header id="header" class="bg-white/80 backdrop-blur-md sticky top-0 z-50 shadow-sm">
@@ -201,7 +348,6 @@
                                 <li data-key="accordion3Item2"><strong>Sponsor Letter / Affidavit of Support:</strong> If applicable (e.g., Form I-134).</li>
                                 <li data-key="accordion3Item3"><strong>Proof of Ties to Home Country:</strong> Critical for demonstrating intent to return after studies (e.g., property deeds, job offers, family business info).</li>
                                 <li data-key="accordion3Item4"><strong>Personal Statement:</strong> A narrative outlining your academic goals and future plans.</li>
-                            ->
                             </ul>
                         </div>
                     </div>
@@ -263,19 +409,19 @@
                              <div class="grid md:grid-cols-2 gap-6">
                                 <div>
                                     <label for="fullName" class="block mb-2 text-sm font-medium text-slate-900" data-key="labelFullName">Full Name</label>
-                                    <input type="text" id="fullName" class="bg-slate-50 border border-slate-300 text-slate-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5" required>
+                                    <input type="text" id="fullName" name="fullName" class="bg-slate-50 border border-slate-300 text-slate-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5" required>
                                 </div>
                                 <div>
                                     <label for="email" class="block mb-2 text-sm font-medium text-slate-900" data-key="labelEmail">Email Address</label>
-                                    <input type="email" id="email" class="bg-slate-50 border border-slate-300 text-slate-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5" required>
+                                    <input type="email" id="email" name="email" class="bg-slate-50 border border-slate-300 text-slate-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5" required>
                                 </div>
                                 <div>
                                     <label for="phone" class="block mb-2 text-sm font-medium text-slate-900" data-key="labelPhone">Phone Number</label>
-                                    <input type="tel" id="phone" class="bg-slate-50 border border-slate-300 text-slate-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5" required>
+                                    <input type="tel" id="phone" name="phone" class="bg-slate-50 border border-slate-300 text-slate-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5" required>
                                 </div>
                                  <div>
                                     <label for="nationality" class="block mb-2 text-sm font-medium text-slate-900" data-key="labelNationality">Nationality</label>
-                                    <input type="text" id="nationality" class="bg-slate-50 border border-slate-300 text-slate-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5" required>
+                                    <input type="text" id="nationality" name="nationality" class="bg-slate-50 border border-slate-300 text-slate-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5" required>
                                 </div>
                             </div>
                         </div>
@@ -285,15 +431,15 @@
                             <div class="space-y-6">
                                 <div>
                                     <label for="education" class="block mb-2 text-sm font-medium text-slate-900" data-key="labelEducation">Highest Level of Education</label>
-                                    <input type="text" id="education" placeholder="e.g., Bachelor's Degree in Computer Science" class="bg-slate-50 border border-slate-300 text-slate-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5" required>
+                                    <input type="text" id="education" name="education" placeholder="e.g., Bachelor's Degree in Computer Science" class="bg-slate-50 border border-slate-300 text-slate-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5" required>
                                 </div>
                                 <div>
                                     <label for="studyField" class="block mb-2 text-sm font-medium text-slate-900" data-key="labelStudyField">Desired Field of Study in the U.S.</label>
-                                    <input type="text" id="studyField" class="bg-slate-50 border border-slate-300 text-slate-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5" required>
+                                    <input type="text" id="studyField" name="studyField" class="bg-slate-50 border border-slate-300 text-slate-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5" required>
                                 </div>
                                 <div>
                                     <label for="institutions" class="block mb-2 text-sm font-medium text-slate-900" data-key="labelInstitutions">Preferred U.S. Institutions (if any)</label>
-                                    <input type="text" id="institutions" class="bg-slate-50 border border-slate-300 text-slate-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
+                                    <input type="text" id="institutions" name="institutions" class="bg-slate-50 border border-slate-300 text-slate-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5">
                                 </div>
                             </div>
                         </div>
@@ -304,23 +450,23 @@
                             <div class="space-y-4">
                                 <div>
                                     <label class="block mb-2 text-sm font-medium text-slate-900" data-key="labelPassportFile">Passport Copy</label>
-                                    <input type="file" id="passportFile" class="file-input" data-list="passportFileList" multiple>
-                                    <div id="passportFileList"></div>
+                                    <input type="file" id="passportFile" name="passportFile" class="file-input" data-list="passportFileList" accept=".pdf,.jpg,.png" multiple>
+                                    <div id="passportFileList" class="text-sm text-slate-600"></div>
                                 </div>
                                 <div>
                                     <label class="block mb-2 text-sm font-medium text-slate-900" data-key="labelAcademicFile">Academic Records (Transcripts, Diplomas)</label>
-                                    <input type="file" id="academicFile" class="file-input" data-list="academicFileList" multiple>
-                                    <div id="academicFileList"></div>
+                                    <input type="file" id="academicFile" name="academicFile" class="file-input" data-list="academicFileList" accept=".pdf,.jpg,.png" multiple>
+                                    <div id="academicFileList" class="text-sm text-slate-600"></div>
                                 </div>
                                 <div>
                                     <label class="block mb-2 text-sm font-medium text-slate-900" data-key="labelFinanceFile">Proof of Finances (Bank Statements)</label>
-                                    <input type="file" id="financeFile" class="file-input" data-list="financeFileList" multiple>
-                                    <div id="financeFileList"></div>
+                                    <input type="file" id="financeFile" name="financeFile" class="file-input" data-list="financeFileList" accept=".pdf,.jpg,.png" multiple>
+                                    <div id="financeFileList" class="text-sm text-slate-600"></div>
                                 </div>
                                 <div>
                                     <label class="block mb-2 text-sm font-medium text-slate-900" data-key="labelOtherFile">Other Supporting Documents (Optional)</label>
-                                    <input type="file" id="otherFile" class="file-input" data-list="otherFileList" multiple>
-                                    <div id="otherFileList"></div>
+                                    <input type="file" id="otherFile" name="otherFile" class="file-input" data-list="otherFileList" accept=".pdf,.jpg,.png" multiple>
+                                    <div id="otherFileList" class="text-sm text-slate-600"></div>
                                 </div>
                             </div>
                         </div>
@@ -330,13 +476,16 @@
                              <div>
                                 <label for="personalStatement" class="block mb-2 text-sm font-medium text-slate-900" data-key="labelPersonalStatement">Personal Statement</label>
                                 <p class="text-slate-600 text-sm mb-2" data-key="personalStatementInstructions">Please explain your reasons for choosing to study in the U.S., your choice of major, and your plans after graduation. This is crucial for your application.</p>
-                                <textarea id="personalStatement" rows="8" class="bg-slate-50 border border-slate-300 text-slate-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5" required></textarea>
+                                <textarea id="personalStatement" name="personalStatement" rows="8" class="bg-slate-50 border border-slate-300 text-slate-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5" required></textarea>
                             </div>
                             <div class="mt-6">
                                 <label class="flex items-center">
-                                    <input type="checkbox" id="consentCheck" class="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500">
+                                    <input type="checkbox" id="consentCheck" name="consentCheck" class="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" required>
                                     <span class="ml-2 text-sm text-slate-600" data-key="consentText">I confirm that the information provided is true and accurate, and I consent to Versatech Ventures LLC using this data to assist with my immigration application.</span>
                                 </label>
+                            </div>
+                            <div class="mt-2 text-sm text-slate-600">
+                                <a href="#" class="underline hover:text-blue-600" data-key="privacyPolicyLink">Read our Privacy Policy</a> (This is a placeholder link)
                             </div>
                         </div>
 
@@ -475,6 +624,8 @@ document.addEventListener('DOMContentLoaded', function () {
             personalStatementInstructions: "Please explain your reasons for choosing to study in the U.S., your choice of major, and your plans after graduation. This is crucial for your application.",
             consentText: "I confirm that the information provided is true and accurate, and I consent to Versatech Ventures LLC using this data to assist with my immigration application.",
             consentAlertText: "You must consent to the terms to submit the application.", // Added for alert message
+            fileTypeAlert: "Invalid file type. Only PDF, JPG, and PNG files are allowed.",
+            fileSizeAlert: "File size exceeds the 5MB limit.",
             btnBack: "Back",
             btnNext: "Next",
             btnSubmit: "Submit Application",
@@ -487,13 +638,15 @@ document.addEventListener('DOMContentLoaded', function () {
             usOfficeRep: "<strong>Representative:</strong> Serge A.",
             usOfficeEmail: "<strong>Email:</strong> <a href=\"mailto:sergea@versatechventuresllc.com\" class=\"accent-text hover:underline\">sergea@versatechventuresllc.com</a>",
             usOfficeWhatsapp: "<strong>WhatsApp:</strong> <a href=\"https://wa.me/14052098246\" class=\"accent-text hover:underline\">+1 405 209 8246</a>",
-            africaOfficeTitle: "Africa Office",
+            africaOfficeTitle: "Bureau Afrique",
             africaOfficeLocation: "Grand Bassam, Cote d'Ivoire",
             africaOfficeRep: "<strong>Representative:</strong> Herve Stephane Amangoua",
             africaOfficeEmail: "<strong>E-mail:</strong> <a href=\"mailto:amangouahs@gmail.com\" class=\"accent-text hover:underline\">amangouahs@gmail.com</a>",
             africaOfficeWhatsapp: "<strong>WhatsApp:</strong> <a href=\"https://wa.me/2250787315639\" class=\"accent-text hover:underline\">+225 07 87 315 639</a>",
-            footerCopyright: "&copy; 2024 Versatech Ventures LLC. All Rights Reserved.",
-            footerTagline: "Your Partner in U.S. Educational Immigration"
+            footerCopyright: "&copy; 2024 Versatech Ventures LLC. Tous droits réservés.",
+            footerTagline: "Votre Partenaire en Immigration Éducative aux États-Unis",
+            fetchingError: "Une erreur est survenue lors de la soumission de votre formulaire. Veuillez réessayer.",
+            genericError: "Une erreur inattendue est survenue. Veuillez réessayer."
         },
         fr: {
             brandName: "Versatech Ventures",
@@ -565,6 +718,8 @@ document.addEventListener('DOMContentLoaded', function () {
             personalStatementInstructions: "Veuillez expliquer vos raisons de choisir d'étudier aux États-Unis, votre choix de majeure et vos projets après l'obtention du diplôme. Ceci est crucial pour votre candidature.",
             consentText: "Je confirme que les informations fournies sont vraies et exactes, et je consens à ce que Versatech Ventures LLC utilise ces données pour m'aider dans ma demande d'immigration.",
             consentAlertText: "Vous devez accepter les conditions pour soumettre l'application.", // Added for alert message
+            fileTypeAlert: "Type de fichier non valide. Seuls les fichiers PDF, JPG et PNG sont autorisés.",
+            fileSizeAlert: "La taille du fichier dépasse la limite de 5 Mo.",
             btnBack: "Retour",
             btnNext: "Suivant",
             btnSubmit: "Soumettre la Demande",
@@ -576,13 +731,16 @@ document.addEventListener('DOMContentLoaded', function () {
             usOfficeLocation: "Oklahoma, États-Unis",
             usOfficeRep: "<strong>Représentant:</strong> Serge A.",
             usOfficeEmail: "<strong>E-mail:</strong> <a href=\"mailto:sergea@versatechventuresllc.com\" class=\"accent-text hover:underline\">sergea@versatechventuresllc.com</a>",
+            usOfficeWhatsapp: "<strong>WhatsApp:</strong> <a href=\"https://wa.me/14052098246\" class=\"accent-text hover:underline\">+1 405 209 8246</a>",
             africaOfficeTitle: "Bureau Afrique",
             africaOfficeLocation: "Grand Bassam, Côte d'Ivoire",
             africaOfficeRep: "<strong>Représentant:</strong> Herve Stephane Amangoua",
             africaOfficeEmail: "<strong>E-mail:</strong> <a href=\"mailto:amangouahs@gmail.com\" class=\"accent-text hover:underline\">amangouahs@gmail.com</a>",
             africaOfficeWhatsapp: "<strong>WhatsApp:</strong> <a href=\"https://wa.me/2250787315639\" class=\"accent-text hover:underline\">+225 07 87 315 639</a>",
             footerCopyright: "&copy; 2024 Versatech Ventures LLC. Tous droits réservés.",
-            footerTagline: "Votre Partenaire en Immigration Éducative aux États-Unis"
+            footerTagline: "Votre Partenaire en Immigration Éducative aux États-Unis",
+            fetchingError: "Une erreur est survenue lors de la soumission de votre formulaire. Veuillez réessayer.",
+            genericError: "Une erreur inattendue est survenue. Veuillez réessayer."
         }
     };
 
@@ -595,6 +753,22 @@ document.addEventListener('DOMContentLoaded', function () {
         translations[currentLanguage].stepName3,
         translations[currentLanguage].stepName4
     ];
+
+    // Custom Modal Functions
+    const customModal = document.getElementById('customModal');
+    const modalMessage = document.getElementById('modalMessage');
+    const modalCloseBtn = document.getElementById('modalCloseBtn');
+
+    function showCustomModal(message) {
+        modalMessage.textContent = message;
+        customModal.classList.remove('hidden');
+    }
+
+    if (modalCloseBtn) {
+        modalCloseBtn.addEventListener('click', () => {
+            customModal.classList.add('hidden');
+        });
+    }
 
     function applyTranslations(lang) {
         document.querySelectorAll('[data-key]').forEach(element => {
@@ -704,6 +878,7 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
+    // Generic validation for required text/email/tel inputs
     function validateStep(step) {
         const currentFormStep = document.getElementById(`step-${step}`);
         const inputs = currentFormStep.querySelectorAll('input[required], textarea[required]');
@@ -716,14 +891,57 @@ document.addEventListener('DOMContentLoaded', function () {
                 input.classList.remove('border-red-500');
             }
         });
+
+        // Specific validation for Step 3: Document Uploads
+        if (step === 3) {
+            const fileInputs = currentFormStep.querySelectorAll('.file-input');
+            const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png'];
+            const maxFileSize = 5 * 1024 * 1024; // 5MB
+
+            fileInputs.forEach(input => {
+                // Only validate if a file is actually selected for optional fields, or if required
+                // For this form, all initial file inputs are technically optional for moving to next step
+                // but we will apply basic validation if a file IS selected.
+                Array.from(input.files).forEach(file => {
+                    if (!allowedTypes.includes(file.type)) {
+                        showCustomModal(translations[currentLanguage].fileTypeAlert);
+                        input.classList.add('border-red-500');
+                        isValid = false;
+                    } else if (file.size > maxFileSize) {
+                        showCustomModal(translations[currentLanguage].fileSizeAlert);
+                        input.classList.add('border-red-500');
+                        isValid = false;
+                    } else {
+                        input.classList.remove('border-red-500');
+                    }
+                });
+            });
+        }
+        
+        // Specific validation for Step 4: Consent Checkbox
+        if (step === 4) {
+            const consentCheck = document.getElementById('consentCheck');
+            if (!consentCheck.checked) {
+                consentCheck.parentElement.classList.add('text-red-500');
+                isValid = false;
+            } else {
+                consentCheck.parentElement.classList.remove('text-red-500');
+            }
+        }
+
         return isValid;
     }
 
+
     if(nextBtn){
         nextBtn.addEventListener('click', () => {
-            if (validateStep(currentStep) && currentStep < totalSteps) {
-                currentStep++;
-                updateFormStep();
+            if (validateStep(currentStep)) { // Validate current step before proceeding
+                if (currentStep < totalSteps) {
+                    currentStep++;
+                    updateFormStep();
+                }
+            } else if (currentStep === 4) { // Special handling for consent on last step
+                 showCustomModal(translations[currentLanguage].consentAlertText);
             }
         });
     }
@@ -741,29 +959,97 @@ document.addEventListener('DOMContentLoaded', function () {
     const successMessage = document.getElementById('successMessage');
 
     if(intakeForm) {
-        intakeForm.addEventListener('submit', function(e) {
+        intakeForm.addEventListener('submit', async function(e) {
             e.preventDefault();
-            const consentCheck = document.getElementById('consentCheck');
-            if (!consentCheck.checked) {
-                consentCheck.parentElement.classList.add('text-red-500');
-                // Use the dedicated consentAlertText for clarity
-                alert(translations[currentLanguage].consentAlertText);
+
+            if (!validateStep(currentStep)) { // Final validation before submission
+                showCustomModal(translations[currentLanguage].consentAlertText); // Re-show if consent is missing
                 return;
-            } else {
-                 consentCheck.parentElement.classList.remove('text-red-500');
             }
 
-            if(validateStep(currentStep)) {
-                // Here you would typically send the form data to a server
-                console.log('Form submitted successfully!');
-                intakeForm.style.display = 'none';
-                successMessage.classList.remove('hidden');
-                document.querySelector('.max-w-3xl.mx-auto.bg-white > .mb-8').style.display = 'none'; // Hide progress bar
+            // Collect form data
+            const formData = new FormData(intakeForm);
+            const submissionData = {};
+            for (let [key, value] of formData.entries()) {
+                // Handle file inputs separately as they are File objects
+                if (value instanceof File) {
+                    // This is a placeholder for actual file upload to cloud storage
+                    // In a real app, files would be uploaded to Firebase Storage or similar,
+                    // and then their URLs/paths would be stored in Firestore.
+                    if (!submissionData.files) {
+                        submissionData.files = {};
+                    }
+                    if (!submissionData.files[key]) {
+                        submissionData.files[key] = [];
+                    }
+                    submissionData.files[key].push({
+                        name: value.name,
+                        size: value.size,
+                        type: value.type,
+                        // In a real app, you'd send the actual file, not its content here
+                        // For demonstration, we just show its metadata.
+                    });
+                     // Simulate file upload to Firebase Storage
+                     // This part assumes window.uploadFileToFirebaseStorage is available from the module script
+                     if (window.uploadFileToFirebaseStorage) {
+                         const filePath = `uploads/${window.currentUserId}/${key}/${value.name}`;
+                         const uploadedPath = await window.uploadFileToFirebaseStorage(value, filePath);
+                         if (uploadedPath) {
+                            console.log(`File uploaded to: ${uploadedPath}`);
+                            // Replace file object with its storage path in submissionData
+                            submissionData.files[key][submissionData.files[key].length - 1].storagePath = uploadedPath;
+                         }
+                     }
+                } else {
+                    submissionData[key] = value;
+                }
+            }
+            // Remove the consent checkbox value from final submission if not needed
+            delete submissionData.consentCheck;
+
+            // Simulate sending data to a backend endpoint or directly to Firestore
+            try {
+                // If Firebase Firestore is initialized, attempt to add the document
+                if (window.addFirestoreDocument) {
+                    const docId = await window.addFirestoreDocument('intakeSubmissions', submissionData);
+                    if (docId) {
+                        console.log("Form data saved to Firestore with ID:", docId);
+                        intakeForm.style.display = 'none';
+                        successMessage.classList.remove('hidden');
+                        document.querySelector('.max-w-3xl.mx-auto.bg-white > .mb-8').style.display = 'none'; // Hide progress bar
+                    } else {
+                        showCustomModal(translations[currentLanguage].fetchingError);
+                    }
+                } else {
+                    // Fallback simulation if Firebase is not initialized
+                    // In a real app, this would be a fetch call to your server
+                    const response = await fetch('/api/submit-form', { // Placeholder URL
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(submissionData),
+                    });
+
+                    if (response.ok) {
+                        console.log('Form data simulated submission successful!');
+                        intakeForm.style.display = 'none';
+                        successMessage.classList.remove('hidden');
+                        document.querySelector('.max-w-3xl.mx-auto.bg-white > .mb-8').style.display = 'none'; // Hide progress bar
+                    } else {
+                        console.error('Simulated form submission failed:', response.statusText);
+                        showCustomModal(translations[currentLanguage].fetchingError);
+                    }
+                }
+
+            } catch (error) {
+                console.error('Error during form submission:', error);
+                showCustomModal(translations[currentLanguage].genericError);
             }
         });
     }
 
-    // File upload UI handler
+    // File upload UI handler with basic client-side validation
     const fileInputs = document.querySelectorAll('.file-input');
     fileInputs.forEach(input => {
         input.addEventListener('change', function(e) {
@@ -771,8 +1057,29 @@ document.addEventListener('DOMContentLoaded', function () {
             const fileListContainer = document.getElementById(listId);
             fileListContainer.innerHTML = ''; // Clear previous list
             const files = e.target.files;
+
+            const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png'];
+            const maxFileSize = 5 * 1024 * 1024; // 5MB
+
+            let allFilesValid = true;
+
             if (files.length > 0) {
                 Array.from(files).forEach(file => {
+                    if (!allowedTypes.includes(file.type)) {
+                        showCustomModal(translations[currentLanguage].fileTypeAlert);
+                        e.target.value = ''; // Clear the input
+                        fileListContainer.innerHTML = ''; // Clear displayed files
+                        allFilesValid = false;
+                        return;
+                    }
+                    if (file.size > maxFileSize) {
+                        showCustomModal(translations[currentLanguage].fileSizeAlert);
+                        e.target.value = ''; // Clear the input
+                        fileListContainer.innerHTML = ''; // Clear displayed files
+                        allFilesValid = false;
+                        return;
+                    }
+
                     const listItem = document.createElement('div');
                     listItem.className = 'file-upload-list-item';
 
@@ -788,6 +1095,11 @@ document.addEventListener('DOMContentLoaded', function () {
                     listItem.appendChild(fileSizeSpan);
                     fileListContainer.appendChild(listItem);
                 });
+            }
+            if (!allFilesValid) {
+                e.target.classList.add('border-red-500');
+            } else {
+                e.target.classList.remove('border-red-500');
             }
         });
     });
